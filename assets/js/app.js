@@ -1,4 +1,4 @@
-import { sampleBooks, categories, userData, sampleOrders } from './data.js';
+import { sampleBooks, categories, sampleOrders } from './data.js';
 import { api } from './api.js';
 import { BOOK_COVER_FALLBACK_URL } from './config.js';
 
@@ -9,11 +9,12 @@ let activeViewParams = {};
 const state = {
   user: null,
   cart: [],
-  books: sampleBooks,
+  books: [],
+  adminUsers: [],
   selectedCategory: 'All',
   currentPage: 1,
   searchKeyword: '',
-  orders: sampleOrders,
+  orders: [],
 };
 
 const menuItems = [
@@ -642,7 +643,13 @@ function renderLoginPage() {
       const authResponse = await api.loginUser({ email, password });
       setAuthenticatedUser(authResponse);
       showToast('Login successful.');
-      const destination = state.user.role === 'ADMIN' ? 'admin' : 'home';
+      const isAdmin = state.user.role === 'ADMIN';
+      const destination = isAdmin ? 'admin' : 'home';
+      if (isAdmin) {
+        void loadAdminDataFromApi();
+      } else {
+        void loadUserOrdersFromApi();
+      }
       setTimeout(
         () => setActiveView(destination),
         700,
@@ -909,7 +916,7 @@ function renderProfilePage() {
 
 function renderAdminDashboard() {
   const totalBooks = state.books.length;
-  const totalUsers = userData.length;
+  const totalUsers = state.adminUsers.length;
   const totalOrders = state.orders.length;
   const totalRevenue = state.orders.reduce((sum, order) => sum + order.total, 0);
 
@@ -1162,7 +1169,7 @@ function bindGlobalInteractions() {
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
       api.setAuthToken(null);
-      setState({ user: null });
+      setState({ user: null, orders: [], adminUsers: [], cart: [] });
       setActiveView('home');
     });
   }
@@ -1244,11 +1251,38 @@ async function loadBooksFromApi() {
     if (!Array.isArray(books)) {
       throw new TypeError('The books API response must be an array.');
     }
-
     setState({ books });
     setActiveView(activeView, activeViewParams);
   } catch (error) {
-    console.warn('Could not load books from the Spring Boot API; showing sample books instead.', error);
+    console.warn('Could not load books from the Spring Boot API; using sample books as fallback.', error);
+    setState({ books: sampleBooks });
+    setActiveView(activeView, activeViewParams);
+  }
+}
+
+async function loadAdminDataFromApi() {
+  try {
+    const [users, orders] = await Promise.all([
+      api.getAdminUsers(),
+      api.getAdminOrders(),
+    ]);
+    setState({
+      adminUsers: Array.isArray(users) ? users : [],
+      orders: Array.isArray(orders) ? orders : sampleOrders,
+    });
+  } catch (error) {
+    console.warn('Could not load admin data from the Spring Boot API; using sample data as fallback.', error);
+    setState({ orders: sampleOrders });
+  }
+}
+
+async function loadUserOrdersFromApi() {
+  try {
+    const orders = await api.getOrders();
+    setState({ orders: Array.isArray(orders) ? orders : sampleOrders });
+  } catch (error) {
+    console.warn('Could not load orders from the Spring Boot API; using sample data as fallback.', error);
+    setState({ orders: sampleOrders });
   }
 }
 
